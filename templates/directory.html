@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Directory listing for {{display_path}}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js"></script>
+</head>
+<body>
+    <h1>File Server</h1>
+    
+    <div class="breadcrumb">
+        <a href="/">Home</a>
+        <span class="breadcrumb-separator">-</span>
+        <span class="current-path">{{display_path}}</span>
+    </div>
+    
+    <div class="container">
+        <div class="action-forms">
+            <div class="card">
+                <h2>Upload Files</h2>
+                <form id="upload-form" enctype="multipart/form-data" method="post" action="?action=upload">
+                    <div class="form-group">
+                        <label for="files">Select files</label>
+                        <input type="file" name="files" multiple required>
+                    </div>
+                    <button type="submit" class="btn">Upload</button>
+                </form>
+            </div>
+            
+            <div class="card">
+                <h2>Create New Folder</h2>
+                <form id="create-folder-form" method="post" action="?action=create_folder">
+                    <div class="form-group">
+                        <label for="folder_name">Folder Name</label>
+                        <input type="text" id="folder_name" name="folder_name" required>
+                    </div>
+                    <button type="submit" class="btn">Create Folder</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Files and Folders</h2>
+            <table>
+                <tr>
+                    <th><a href="{{name_link}}">Name{{name_arrow}}</a></th>
+                    <th><a href="{{type_link}}">Type{{type_arrow}}</a></th>
+                    <th><a href="{{size_link}}">Size{{size_arrow}}</a></th>
+                    <th><a href="{{modified_link}}">Last Modified{{modified_arrow}}</a></th>
+                </tr>
+                
+                {% if show_parent %}
+                <tr>
+                    <td><a href="../">📁 ../</a></td>
+                    <td>Directory</td>
+                    <td>-</td>
+                    <td>-</td>
+                </tr>
+                {% endif %}
+                
+                {% for item in items %}
+                <tr>
+                    <td><a href="{{item.url}}">{{item.icon}} {{item.name}}</a></td>
+                    <td>{{item.type}}</td>
+                    <td class="file-size" data-size="{{item.size}}">{{item.size_str}}</td>
+                    <td>{{item.date}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      - ./data:/data
+    command: -H 0.0.0.0 -p ${PORT:-8000}
+    restart: unless-stopped
+    environment:
+      - PORT=${PORT:-8000} 
