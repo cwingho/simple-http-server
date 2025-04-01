@@ -127,3 +127,7 @@ docker compose down
 The Docker configuration mounts the specified directory by default to the container, which contains all uploaded files and is persisted.
 
 This allows you to customize the appearance and behavior of the server without rebuilding the Docker image. 🔄
+
+## Screenshots
+
+![Screenshot](./img/screenshot.png)
