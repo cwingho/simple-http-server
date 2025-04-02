@@ -390,8 +390,45 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             self.serve_static_file()
             return
         
-        # Otherwise, handle normally
-        return super().do_GET()
+        # Get the file path
+        path = self.translate_path(self.path)
+        
+        # If it's a directory, show the listing
+        if os.path.isdir(path):
+            return super().do_GET()
+        
+        # If it's a file, serve it
+        try:
+            # Check if file exists and is readable
+            if not os.path.exists(path):
+                self.send_error(404, "File not found")
+                return
+            
+            # Determine content type
+            content_type = self.guess_type(path)
+            
+            # Open and read the file
+            with open(path, 'rb') as f:
+                content = f.read()
+            
+            # Send headers
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            
+            # Send file content
+            self.wfile.write(content)
+            
+        except Exception as e:
+            self.send_error(500, f"Error serving file: {str(e)}")
+
+    def guess_type(self, path):
+        """Guess the type of a file based on its extension."""
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.extensions_map:
+            return self.extensions_map[ext]
+        return 'application/octet-stream'
 
     def serve_static_file(self):
         """Serve static files from the static directory."""
@@ -460,4 +497,22 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             '.svg': 'image/svg+xml',
             '.ico': 'image/x-icon',
         }
-        return content_types.get(ext, 'application/octet-stream') 
+        return content_types.get(ext, 'application/octet-stream')
+
+# Add these lines near the class definition
+extensions_map = {
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.txt': 'text/plain',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.xml': 'application/xml',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.pdf': 'application/pdf',
+    '.zip': 'application/zip',
+    '': 'application/octet-stream',    # Default
+} 
