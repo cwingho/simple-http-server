@@ -5,11 +5,52 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (uploadForm) {
         uploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
             const fileInput = document.querySelector('input[name="files"]');
             if (fileInput.files.length === 0) {
-                e.preventDefault();
                 alert('Please select at least one file to upload.');
+                return;
             }
+
+            const progressContainer = uploadForm.querySelector('.upload-progress');
+            const progressBarFill = uploadForm.querySelector('.progress-bar-fill');
+            const progressText = uploadForm.querySelector('.progress-text');
+            
+            // Show progress bar
+            progressContainer.style.display = 'block';
+            
+            // Create FormData object
+            const formData = new FormData(uploadForm);
+            
+            // Create and configure XMLHttpRequest
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBarFill.style.width = percentComplete + '%';
+                    progressText.textContent = Math.round(percentComplete) + '%';
+                }
+            });
+            
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    // Reload the page to show new files
+                    window.location.reload();
+                } else {
+                    alert('Upload failed: ' + xhr.statusText);
+                    progressContainer.style.display = 'none';
+                }
+            });
+            
+            xhr.addEventListener('error', function() {
+                alert('Upload failed. Please try again.');
+                progressContainer.style.display = 'none';
+            });
+            
+            // Send the request
+            xhr.open('POST', uploadForm.action, true);
+            xhr.send(formData);
         });
     }
     
