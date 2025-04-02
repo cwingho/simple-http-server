@@ -2,7 +2,7 @@
 import os
 import sys
 import argparse
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 from server import UploadEnabledHTTPHandler
 
 def parse_arguments():
@@ -35,40 +35,37 @@ def run_server(host, port, directory):
     # Change to the specified directory
     os.chdir(directory)
     
-    # Ensure data directory exists
-    data_dir = os.path.join(directory, "data")
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir, exist_ok=True)
-        print(f"Created data directory: {data_dir}")
-    
-    # Ensure static directory exists
-    static_dir = os.path.join(directory, "static")
-    if not os.path.exists(static_dir):
-        os.makedirs(static_dir, exist_ok=True)
-        print(f"Created static directory: {static_dir}")
-    
-    # Ensure templates directory exists
-    templates_dir = os.path.join(directory, "templates")
-    if not os.path.exists(templates_dir):
-        os.makedirs(templates_dir, exist_ok=True)
-        print(f"Created templates directory: {templates_dir}")
+    # Ensure directories exist
+    for dir_name in ["data", "static", "templates"]:
+        dir_path = os.path.join(directory, dir_name)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+            print(f"Created {dir_name} directory: {dir_path}")
     
     # Create the server
     handler = UploadEnabledHTTPHandler
-    server = HTTPServer((host, port), handler)
+    server = ThreadingHTTPServer((host, port), handler)
+    server.daemon_threads = True  # Set daemon threads
     
     # Print server information
+    data_dir = os.path.join(directory, "data")
     print(f"Serving HTTP on {host} port {port} (http://{host if host != '0.0.0.0' else 'localhost'}:{port}/) ...")
     print(f"Base directory: {os.path.abspath(directory)}")
     print(f"Accessible directory: {os.path.abspath(data_dir)}")
     print("Press Ctrl+C to stop the server")
     
     try:
-        # Start the server
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nServer stopped.")
+        print("\nShutting down server...")
+        server.shutdown()
         server.server_close()
+        print("Server stopped.")
+    except Exception as e:
+        print(f"\nError: {e}")
+        server.shutdown()
+        server.server_close()
+        sys.exit(1)
 
 if __name__ == "__main__":
     args = parse_arguments()
