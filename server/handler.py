@@ -2,7 +2,7 @@ import os
 import io
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler
-
+import cgi
 from server.path_utils import get_file_info
 from server.template_loader import generate_directory_listing
 
@@ -149,82 +149,53 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
     
     def _handle_file_upload(self, path):
         """Handle file upload requests."""
-        try:
-            # Parse multipart form data
-            content_type = self.headers['Content-Type']
-            boundary = content_type.split('=')[1].encode()
-            remaining = int(self.headers['Content-Length'])
-            
-            # Set a larger chunk size (e.g., 64KB)
-            chunk_size = 65536  # 64KB
-            
-            # Skip first boundary
-            while True:
-                line = self.rfile.readline()
-                remaining -= len(line)
-                if boundary in line:
-                    break
-            
-            # Process each part
-            while remaining > 0:
-                try:
-                    # Get headers
-                    headers = {}
-                    while True:
-                        line = self.rfile.readline()
-                        remaining -= len(line)
-                        if not line or line == b'\r\n':
-                            break
-                        key, value = line.decode().split(':', 1)
-                        headers[key.strip().lower()] = value.strip()
-                    
-                    # Process file part
-                    if 'content-disposition' in headers:
-                        content_disp = headers['content-disposition']
-                        filename = None
-                        for item in content_disp.split(';'):
-                            if 'filename=' in item:
-                                filename = item.split('=')[1].strip('"')
-                                break
-                        
-                        if filename:
-                            file_path = os.path.join(path, os.path.basename(filename))
-                            try:
-                                with open(file_path, 'wb') as f:
-                                    # Read data in larger chunks
-                                    buffer = bytearray()
-                                    while remaining > 0:
-                                        chunk = self.rfile.read(min(chunk_size, remaining))
-                                        remaining -= len(chunk)
-                                        
-                                        # Look for boundary in the chunk
-                                        boundary_pos = chunk.find(boundary)
-                                        if boundary_pos != -1:
-                                            # Write data up to the boundary
-                                            buffer.extend(chunk[:boundary_pos-2])  # -2 to remove \r\n
-                                            f.write(buffer)
-                                            # Skip to next part
-                                            remaining -= (len(chunk) - boundary_pos)
-                                            break
-                                        else:
-                                            # Keep last few bytes in case boundary spans chunks
-                                            buffer.extend(chunk)
-                                            if len(buffer) > len(boundary):
-                                                # Write all except the last boundary-length bytes
-                                                f.write(buffer[:-len(boundary)])
-                                                buffer = buffer[-len(boundary):]
-                            
-                            except Exception as e:
-                                self.send_error(500, f"Error saving file: {str(e)}")
-                                return
-                            
-                except Exception as e:
-                    self.send_error(500, f"Error processing upload: {str(e)}")
-                    return
-                
-        except Exception as e:
-            self.send_error(500, f"Server error: {str(e)}")
+        # Parse the form data
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                'REQUEST_METHOD': 'POST',
+                'CONTENT_TYPE': self.headers['Content-Type'],
+            }
+        )
+        
+        # Check if the files field is in the form
+        if 'files' not in form:
+            self.send_error(400, "Bad request - missing files field")
             return
+        
+        # Get the file items (could be multiple)
+        file_items = form['files']
+        
+        # Handle both single and multiple file uploads
+        if isinstance(file_items, list):
+            # Multiple files
+            file_list = file_items
+        else:
+            # Single file
+            file_list = [file_items]
+        
+        # Process each file
+        uploaded_files = []
+        for file_item in file_list:
+            # Check if a file was actually uploaded
+            if not file_item.filename:
+                continue
+                
+            # Sanitize the filename
+            filename = os.path.basename(file_item.filename)
+            
+            # Create the file path
+            file_path = os.path.join(path, filename)
+            
+            try:
+                # Write the file
+                with open(file_path, 'wb') as f:
+                    f.write(file_item.file.read())
+                uploaded_files.append(filename)
+            except Exception as e:
+                self.send_error(500, f"Server error: {str(e)}")
+                return
         
         # Redirect back to the current directory
         self.send_response(303)
