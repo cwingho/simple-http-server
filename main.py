@@ -70,63 +70,6 @@ def run_server(host, port, directory):
         print("\nServer stopped.")
         server.server_close()
 
-def create_default_static_files(static_dir):
-    """Create default static files if they don't exist."""
-    # Create CSS file
-    css_path = os.path.join(static_dir, "style.css")
-    if not os.path.exists(css_path):
-        with open(css_path, 'w') as f:
-            f.write("""/* Default styles */
-:root {
-    --background: #ffffff;
-    --foreground: #09090b;
-    --card: #f4f4f5;
-    --card-foreground: #09090b;
-    --primary: #18181b;
-    --primary-foreground: #ffffff;
-    --secondary: #f4f4f5;
-    --secondary-foreground: #18181b;
-    --muted: #f4f4f5;
-    --muted-foreground: #71717a;
-    --border: #e4e4e7;
-    --input: #e4e4e7;
-    --radius: 0.5rem;
-}
-
-/* Base styles */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background-color: var(--background);
-    color: var(--foreground);
-    line-height: 1.5;
-    padding: 1.5rem;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-/* Add more styles as needed */
-""")
-        print(f"Created default CSS file: {css_path}")
-    
-    # Create JS file
-    js_path = os.path.join(static_dir, "script.js")
-    if not os.path.exists(js_path):
-        with open(js_path, 'w') as f:
-            f.write("""// Default script
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('File server loaded');
-    
-    // Add your JavaScript here
-});
-""")
-        print(f"Created default JS file: {js_path}")
-
 if __name__ == "__main__":
     args = parse_arguments()
     run_server(args.host, args.port, args.directory) 

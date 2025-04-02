@@ -1,7 +1,6 @@
 import os
 import io
 import cgi
-import html
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler
 
@@ -107,7 +106,7 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             items.sort(key=lambda x: (x[3], x[0].lower()), reverse=(sort_order == 'desc'))
         
         # Generate HTML content
-        html_content = generate_directory_listing(path, display_path, items, sort_by, sort_order)
+        html_content = generate_directory_listing(display_path, items, sort_by, sort_order)
         
         # Send the response
         encoded = html_content.encode('utf-8', 'surrogateescape')
@@ -144,6 +143,8 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             self._handle_file_upload(path)
         elif action == 'create_folder':
             self._handle_folder_creation(path)
+        elif action == 'delete':
+            self._handle_file_deletion(path)
         else:
             self.send_error(400, "Bad request - unknown action")
     
@@ -237,6 +238,151 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             
         except Exception as e:
             self.send_error(500, f"Server error: {str(e)}")
+
+    def _handle_file_deletion(self, path):
+        """Handle file/folder deletion requests."""
+        try:
+            # Get the content length
+            content_length = int(self.headers['Content-Length'])
+            
+            # Read the POST data
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            
+            # Parse the form data
+            form_data = urllib.parse.parse_qs(post_data)
+            
+            # Get the filename
+            filename = form_data.get('filename', [''])[0]
+            
+            if not filename:
+                f = self._show_directory_with_error(path, "Missing filename")
+                if f:
+                    self.copyfile(f, self.wfile)
+                return
+            
+            # Remove trailing slash if present (important for directories)
+            filename = filename.rstrip('/')
+            
+            # Sanitize the filename
+            filename = os.path.basename(filename)
+            
+            # Create the full path
+            file_path = os.path.join(path, filename)
+            
+            # Check if path exists
+            if not os.path.exists(file_path):
+                f = self._show_directory_with_error(path, "File not found")
+                if f:
+                    self.copyfile(f, self.wfile)
+                return
+            
+            # Check if path is within data directory
+            data_dir = os.path.join(os.getcwd(), self.data_directory)
+            if not os.path.realpath(file_path).startswith(data_dir):
+                f = self._show_directory_with_error(path, "Cannot delete files outside data directory")
+                if f:
+                    self.copyfile(f, self.wfile)
+                return
+            
+            # Delete the file/folder
+            if os.path.isdir(file_path):
+                try:
+                    # First check if directory is actually empty
+                    if not os.listdir(file_path):
+                        os.rmdir(file_path)
+                        # Redirect back to the current directory
+                        self.send_response(303)
+                        self.send_header("Location", self.path.split('?')[0])
+                        self.end_headers()
+                    else:
+                        f = self._show_directory_with_error(path, "Directory not empty - contains files or subdirectories")
+                        if f:
+                            self.copyfile(f, self.wfile)
+                except OSError as e:
+                    f = self._show_directory_with_error(path, f"Failed to delete directory: {str(e)}")
+                    if f:
+                        self.copyfile(f, self.wfile)
+            else:
+                try:
+                    os.remove(file_path)
+                    # Redirect back to the current directory
+                    self.send_response(303)
+                    self.send_header("Location", self.path.split('?')[0])
+                    self.end_headers()
+                except OSError as e:
+                    f = self._show_directory_with_error(path, f"Failed to delete file: {str(e)}")
+                    if f:
+                        self.copyfile(f, self.wfile)
+        
+        except Exception as e:
+            f = self._show_directory_with_error(path, f"Server error: {str(e)}")
+            if f:
+                self.copyfile(f, self.wfile)
+
+    def _show_directory_with_error(self, path, error_message):
+        """Show directory listing with an error message."""
+        try:
+            # Get list of directory contents
+            file_list = os.listdir(path)
+        except OSError:
+            self.send_error(404, "No permission to list directory")
+            return None
+        
+        # Get query parameters for sorting
+        query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        sort_by = query_components.get('sort', ['name'])[0]
+        sort_order = query_components.get('order', ['asc'])[0]
+        
+        # Get display path
+        display_path = urllib.parse.unquote(self.path)
+        display_path = display_path.split('?')[0]
+        
+        # Prepare items for the template
+        items = []
+        for name in file_list:
+            fullname = os.path.join(path, name)
+            
+            # Skip hidden files
+            if name.startswith('.'):
+                continue
+                
+            # Get file info
+            is_dir = os.path.isdir(fullname)
+            
+            if is_dir:
+                size, last_modified = 0, os.path.getmtime(fullname)
+            else:
+                size, last_modified = get_file_info(fullname)
+                
+            items.append((name, is_dir, size, last_modified))
+        
+        # Apply sorting
+        if sort_by == 'name':
+            items.sort(key=lambda x: x[0].lower(), reverse=(sort_order == 'desc'))
+        elif sort_by == 'type':
+            items.sort(key=lambda x: (not x[1], x[0].lower()), reverse=(sort_order == 'desc'))
+        elif sort_by == 'size':
+            items.sort(key=lambda x: (x[2], x[0].lower()), reverse=(sort_order == 'desc'))
+        elif sort_by == 'modified':
+            items.sort(key=lambda x: (x[3], x[0].lower()), reverse=(sort_order == 'desc'))
+        
+        # Generate HTML content with error message
+        html_content = generate_directory_listing(
+            display_path, items, sort_by, sort_order, 
+            error_message=error_message
+        )
+        
+        # Send response
+        encoded = html_content.encode('utf-8', 'surrogateescape')
+        f = io.BytesIO()
+        f.write(encoded)
+        f.seek(0)
+        
+        self.send_response(200)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        return f
 
     def do_GET(self):
         """Handle GET requests for files and directories."""

@@ -123,7 +123,7 @@ def process_loops(template, context):
     # Replace all loop blocks
     return re.sub(pattern, replace_loop, template, flags=re.DOTALL)
 
-def generate_directory_listing(directory_path, display_path, items, sort_by='name', sort_order='asc'):
+def generate_directory_listing(display_path, items, sort_by='name', sort_order='asc', error_message=None):
     """
     Generate HTML for directory listing using templates.
     
@@ -133,6 +133,7 @@ def generate_directory_listing(directory_path, display_path, items, sort_by='nam
         items (list): List of (name, is_dir, size, last_modified) tuples
         sort_by (str): Column to sort by ('name', 'type', 'size', 'modified')
         sort_order (str): Sort order ('asc' or 'desc')
+        error_message (str, optional): Error message to display
         
     Returns:
         str: HTML content for the directory listing page
@@ -196,4 +197,5 @@ def generate_directory_listing(directory_path, display_path, items, sort_by='nam
                           modified_link=modified_link,
                           modified_arrow=modified_arrow,
                           show_parent=show_parent,
-                          items=file_items) 
+                          items=file_items,
+                          error_message=error_message) 

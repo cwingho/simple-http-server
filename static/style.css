@@ -143,4 +143,23 @@ input[type="text"], input[type="file"] {
 
 .current-path {
     color: var(--foreground);
+}
+
+.btn-delete {
+    background: #ff4444;
+    color: white;
+    border-color: #cc0000;
+}
+
+.btn-delete:hover {
+    background: #cc0000;
+}
+
+.error-message {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    font-family: monospace;
 } 

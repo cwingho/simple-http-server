@@ -9,6 +9,12 @@
 <body>
     <h1>File Server</h1>
     
+    {% if error_message %}
+    <div class="error-message">
+        Error: {{error_message}}
+    </div>
+    {% endif %}
+    
     <div class="breadcrumb">
         <a href="/">Home</a>
         <span class="breadcrumb-separator">-</span>
@@ -65,6 +71,12 @@
                     <td>{{item.type}}</td>
                     <td class="file-size" data-size="{{item.size}}">{{item.size_str}}</td>
                     <td>{{item.date}}</td>
+                    <td>
+                        <form class="delete-form" method="post" action="?action=delete" style="display: inline;">
+                            <input type="hidden" name="filename" value="{{item.name}}">
+                            <button type="submit" class="btn btn-delete">Delete</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </table>
