@@ -1,10 +1,9 @@
 import os
 import io
-import cgi
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler
 
-from server.path_utils import normalize_path, is_path_safe, get_file_info
+from server.path_utils import get_file_info
 from server.template_loader import generate_directory_listing
 
 class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
@@ -151,75 +150,70 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
     def _handle_file_upload(self, path):
         """Handle file upload requests."""
         try:
-            # Get the content type
+            # Parse multipart form data
             content_type = self.headers['Content-Type']
-            
-            # Get the boundary
             boundary = content_type.split('=')[1].encode()
-            
-            # Get content length
             remaining = int(self.headers['Content-Length'])
             
-            # Set a reasonable chunk size (e.g., 8KB)
-            chunk_size = 8192
+            # Set a larger chunk size (e.g., 64KB)
+            chunk_size = 65536  # 64KB
             
-            line = self.rfile.readline()
-            remaining -= len(line)
-            
-            if not boundary in line:
-                self.send_error(400, "Bad request - no boundary in multipart/form-data")
-                return
+            # Skip first boundary
+            while True:
+                line = self.rfile.readline()
+                remaining -= len(line)
+                if boundary in line:
+                    break
             
             # Process each part
             while remaining > 0:
                 try:
-                    # Get headers for this part
+                    # Get headers
                     headers = {}
                     while True:
                         line = self.rfile.readline()
                         remaining -= len(line)
-                        
                         if not line or line == b'\r\n':
                             break
-                            
-                        # Parse header
                         key, value = line.decode().split(':', 1)
                         headers[key.strip().lower()] = value.strip()
                     
-                    # If this is a file
+                    # Process file part
                     if 'content-disposition' in headers:
-                        # Get filename from headers
                         content_disp = headers['content-disposition']
-                        items = content_disp.split(';')
                         filename = None
-                        for item in items:
+                        for item in content_disp.split(';'):
                             if 'filename=' in item:
                                 filename = item.split('=')[1].strip('"')
                                 break
                         
                         if filename:
-                            # Create the file path
                             file_path = os.path.join(path, os.path.basename(filename))
-                            
                             try:
                                 with open(file_path, 'wb') as f:
-                                    # Process the file data in chunks
-                                    prev_chunk = None
+                                    # Read data in larger chunks
+                                    buffer = bytearray()
                                     while remaining > 0:
-                                        chunk = self.rfile.readline()
+                                        chunk = self.rfile.read(min(chunk_size, remaining))
                                         remaining -= len(chunk)
                                         
-                                        # Check if we've reached the boundary
-                                        if boundary in chunk:
-                                            if prev_chunk:
-                                                # Remove trailing \r\n from last chunk
-                                                f.write(prev_chunk[:-2])
+                                        # Look for boundary in the chunk
+                                        boundary_pos = chunk.find(boundary)
+                                        if boundary_pos != -1:
+                                            # Write data up to the boundary
+                                            buffer.extend(chunk[:boundary_pos-2])  # -2 to remove \r\n
+                                            f.write(buffer)
+                                            # Skip to next part
+                                            remaining -= (len(chunk) - boundary_pos)
                                             break
                                         else:
-                                            if prev_chunk:
-                                                f.write(prev_chunk)
-                                            prev_chunk = chunk
-                                            
+                                            # Keep last few bytes in case boundary spans chunks
+                                            buffer.extend(chunk)
+                                            if len(buffer) > len(boundary):
+                                                # Write all except the last boundary-length bytes
+                                                f.write(buffer[:-len(boundary)])
+                                                buffer = buffer[-len(boundary):]
+                            
                             except Exception as e:
                                 self.send_error(500, f"Error saving file: {str(e)}")
                                 return
