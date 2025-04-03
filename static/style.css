@@ -1,10 +1,45 @@
 :root {
+    /* Light theme (default) */
     --background: #ffffff;
     --foreground: #000000;
     --link-color: #00e;
     --visited-link: #551a8b;
     --hover-bg: #eeeeee;
     --border-color: #d3d3d3;
+    --card-bg: #ffffff;
+    --error-bg: #f8d7da;
+    --error-color: #721c24;
+    --error-border: #f5c6cb;
+    --button-bg: #e9e9e9;
+    --button-hover: #d9d9d9;
+    --delete-button-bg: #ff4444;
+    --delete-button-color: white;
+    --delete-button-border: #cc0000;
+    --delete-button-hover: #cc0000;
+    --progress-bg: #f0f0f0;
+    --progress-fill: #4CAF50;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+    --background: #1a1a1a;
+    --foreground: #ffffff;
+    --link-color: #66b3ff;
+    --visited-link: #b366ff;
+    --hover-bg: #333333;
+    --border-color: #404040;
+    --card-bg: #262626;
+    --error-bg: #442326;
+    --error-color: #ff9999;
+    --error-border: #662629;
+    --button-bg: #404040;
+    --button-hover: #4d4d4d;
+    --delete-button-bg: #cc0000;
+    --delete-button-color: white;
+    --delete-button-border: #990000;
+    --delete-button-hover: #990000;
+    --progress-bg: #333333;
+    --progress-fill: #45a049;
 }
 
 * {
@@ -37,6 +72,7 @@ h1 {
     margin-bottom: 2rem;
     border: 1px solid var(--border-color);
     padding: 1rem;
+    background-color: var(--card-bg);
 }
 
 .card {
@@ -112,7 +148,7 @@ input[type="text"], input[type="file"] {
 
 .btn {
     padding: 0.25rem 0.5rem;
-    background: #e9e9e9;
+    background: var(--button-bg);
     border: 1px solid var(--border-color);
     color: var(--foreground);
     font-family: monospace;
@@ -120,7 +156,7 @@ input[type="text"], input[type="file"] {
 }
 
 .btn:hover {
-    background: #d9d9d9;
+    background: var(--button-hover);
 }
 
 .breadcrumb {
@@ -146,19 +182,19 @@ input[type="text"], input[type="file"] {
 }
 
 .btn-delete {
-    background: #ff4444;
-    color: white;
-    border-color: #cc0000;
+    background: var(--delete-button-bg);
+    color: var(--delete-button-color);
+    border-color: var(--delete-button-border);
 }
 
 .btn-delete:hover {
-    background: #cc0000;
+    background: var(--delete-button-hover);
 }
 
 .error-message {
-    color: #721c24;
-    background-color: #f8d7da;
-    border: 1px solid #f5c6cb;
+    color: var(--error-color);
+    background-color: var(--error-bg);
+    border-color: var(--error-border);
     padding: 0.5rem;
     margin-bottom: 1rem;
     font-family: monospace;
@@ -171,7 +207,7 @@ input[type="text"], input[type="file"] {
 .progress-bar {
     width: 100%;
     height: 20px;
-    background-color: #f0f0f0;
+    background-color: var(--progress-bg);
     border: 1px solid var(--border-color);
     border-radius: 3px;
     overflow: hidden;
@@ -179,7 +215,7 @@ input[type="text"], input[type="file"] {
 
 .progress-bar-fill {
     height: 100%;
-    background-color: #4CAF50;
+    background-color: var(--progress-fill);
     width: 0%;
     transition: width 0.3s ease;
 }
@@ -188,4 +224,22 @@ input[type="text"], input[type="file"] {
     text-align: center;
     margin-top: 5px;
     font-size: 0.9em;
+}
+
+/* Add theme toggle button styles */
+.theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.5rem;
+    background: var(--button-bg);
+    border: 1px solid var(--border-color);
+    color: var(--foreground);
+    cursor: pointer;
+    font-family: monospace;
+    z-index: 1000;
+}
+
+.theme-toggle:hover {
+    background: var(--button-hover);
 } 
