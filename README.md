@@ -2,6 +2,8 @@
 
 A lightweight HTTP server based on Python's standard library that provides directory browsing, file download, and file upload capabilities. By default, the server serves and allows uploads to the `./data/` directory. However, users can customize the directory by mounting it using Docker or providing the directory when using the `python main.py` command.
 
+![Screenshot](./img/screenshot.png)
+
 ## Features
 
 - File upload and download functionality 🔄
@@ -128,6 +130,3 @@ The Docker configuration mounts the specified directory by default to the contai
 
 This allows you to customize the appearance and behavior of the server without rebuilding the Docker image. 🔄
 
-## Screenshots
-
-![Screenshot](./img/screenshot.png)
