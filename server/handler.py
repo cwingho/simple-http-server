@@ -88,7 +88,9 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             is_dir = os.path.isdir(fullname)
             
             if is_dir:
-                size, last_modified = 0, os.path.getmtime(fullname)
+                # Calculate total size for directory
+                size = self._get_dir_size(fullname)
+                last_modified = os.path.getmtime(fullname)
             else:
                 size, last_modified = get_file_info(fullname)
                 
@@ -118,6 +120,26 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         return f
+    
+    def _get_dir_size(self, path):
+        """Recursively calculate total size of a directory."""
+        total_size = 0
+        try:
+            # Walk through all files and subdirectories
+            for dirpath, dirnames, filenames in os.walk(path):
+                # Skip hidden files and directories
+                filenames = [f for f in filenames if not f.startswith('.')]
+                dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    # Add file size if regular file
+                    if os.path.isfile(file_path):
+                        total_size += os.path.getsize(file_path)
+        except (OSError, PermissionError):
+            # Return 0 if there's any error accessing files
+            return 0
+        return total_size
     
     def do_POST(self):
         """Handle POST requests for file uploads and folder creation."""
@@ -349,7 +371,9 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             is_dir = os.path.isdir(fullname)
             
             if is_dir:
-                size, last_modified = 0, os.path.getmtime(fullname)
+                # Calculate total size for directory
+                size = self._get_dir_size(fullname)
+                last_modified = os.path.getmtime(fullname)
             else:
                 size, last_modified = get_file_info(fullname)
                 
