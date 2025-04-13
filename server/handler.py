@@ -12,19 +12,31 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
     # Define the data directory
     data_directory = "data"
     
+    # Define content type mappings
+    extensions_map = {
+        '.html': 'text/html',
+        '.htm': 'text/html',
+        '.txt': 'text/plain',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.xml': 'application/xml',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.pdf': 'application/pdf',
+        '.zip': 'application/zip',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+        '': 'application/octet-stream',    # Default
+    }
+    
     def translate_path(self, path):
-        """
-        Override translate_path to restrict access to the data directory.
-        """
-        # First normalize the URL path
-        path = path.split('?', 1)[0]  # Remove query parameters
-        path = path.split('#', 1)[0]  # Remove fragment
-        
-        # Decode percent-encoded characters
-        path = urllib.parse.unquote(path)
-        
-        # Convert to native OS path format
-        path = path.replace('/', os.sep)
+        """Override translate_path to restrict access to the data directory."""
+        # Normalize the URL path
+        path = path.split('?', 1)[0].split('#', 1)[0]  # Remove query parameters and fragment
+        path = urllib.parse.unquote(path).replace('/', os.sep)
         
         # Make it absolute
         cwd = os.getcwd()
@@ -38,57 +50,44 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         if not path or path == '/':
             return data_dir
         
-        # Remove any leading separator
+        # Remove any leading separator and join with data directory
         while path.startswith(os.sep):
             path = path[1:]
         
-        # Join with data directory and normalize
         full_path = os.path.normpath(os.path.join(data_dir, path))
         
         # Ensure the path is still within data directory
-        if not full_path.startswith(data_dir):
-            return data_dir
-        
-        return full_path
+        return full_path if full_path.startswith(data_dir) else data_dir
     
-    def list_directory(self, path):
-        """
-        Override the list_directory method to include the upload form and sorting.
-        """
+    def _prepare_directory_items(self, path):
+        """Prepare directory items for listing with sorting."""
         try:
             # Get list of directory contents
             file_list = os.listdir(path)
         except OSError:
             self.send_error(404, "No permission to list directory")
-            return None
+            return None, None, None, None
         
         # Get query parameters for sorting
         query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         sort_by = query_components.get('sort', ['name'])[0]
         sort_order = query_components.get('order', ['asc'])[0]
         
-        # Sort entries
-        file_list.sort(key=lambda a: a.lower())
-        
         # Get display path
-        display_path = urllib.parse.unquote(self.path)
-        # Remove query parameters from display path
-        display_path = display_path.split('?')[0]
+        display_path = urllib.parse.unquote(self.path).split('?')[0]
         
         # Prepare items for the template
         items = []
         for name in file_list:
-            fullname = os.path.join(path, name)
-            
             # Skip hidden files
             if name.startswith('.'):
                 continue
                 
-            # Get file info
+            fullname = os.path.join(path, name)
             is_dir = os.path.isdir(fullname)
             
+            # Get file info
             if is_dir:
-                # Calculate total size for directory
                 size = self._get_dir_size(fullname)
                 last_modified = os.path.getmtime(fullname)
             else:
@@ -96,7 +95,7 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
                 
             items.append((name, is_dir, size, last_modified))
         
-        # Apply sorting based on sort_by and sort_order
+        # Apply sorting
         if sort_by == 'name':
             items.sort(key=lambda x: x[0].lower(), reverse=(sort_order == 'desc'))
         elif sort_by == 'type':
@@ -105,6 +104,14 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             items.sort(key=lambda x: (x[2], x[0].lower()), reverse=(sort_order == 'desc'))
         elif sort_by == 'modified':
             items.sort(key=lambda x: (x[3], x[0].lower()), reverse=(sort_order == 'desc'))
+            
+        return items, display_path, sort_by, sort_order
+    
+    def list_directory(self, path):
+        """Override the list_directory method to include the upload form and sorting."""
+        items, display_path, sort_by, sort_order = self._prepare_directory_items(path)
+        if items is None:
+            return None
         
         # Generate HTML content
         html_content = generate_directory_listing(display_path, items, sort_by, sort_order)
@@ -125,7 +132,6 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         """Recursively calculate total size of a directory."""
         total_size = 0
         try:
-            # Walk through all files and subdirectories
             for dirpath, dirnames, filenames in os.walk(path):
                 # Skip hidden files and directories
                 filenames = [f for f in filenames if not f.startswith('.')]
@@ -133,11 +139,9 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
                 
                 for filename in filenames:
                     file_path = os.path.join(dirpath, filename)
-                    # Add file size if regular file
                     if os.path.isfile(file_path):
                         total_size += os.path.getsize(file_path)
         except (OSError, PermissionError):
-            # Return 0 if there's any error accessing files
             return 0
         return total_size
     
@@ -147,31 +151,27 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         path = self.translate_path(self.path)
         data_dir = os.path.join(os.getcwd(), self.data_directory)
         
-        if not path.startswith(data_dir):
+        if not path.startswith(data_dir) or not os.path.isdir(path):
             self.send_error(403, "Forbidden - operations only allowed in data directory")
-            return
-            
-        # Check if the path is a directory
-        if not os.path.isdir(path):
-            self.send_error(405, "Method not allowed")
             return
         
         # Parse the query string to determine the action
         query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         action = query_components.get('action', ['upload'])[0]
         
-        if action == 'upload':
-            self._handle_file_upload(path)
-        elif action == 'create_folder':
-            self._handle_folder_creation(path)
-        elif action == 'delete':
-            self._handle_file_deletion(path)
+        handlers = {
+            'upload': self._handle_file_upload,
+            'create_folder': self._handle_folder_creation,
+            'delete': self._handle_file_deletion
+        }
+        
+        if action in handlers:
+            handlers[action](path)
         else:
             self.send_error(400, "Bad request - unknown action")
     
     def _handle_file_upload(self, path):
         """Handle file upload requests."""
-        # Parse the form data
         form = cgi.FieldStorage(
             fp=self.rfile,
             headers=self.headers,
@@ -181,213 +181,104 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
             }
         )
         
-        # Check if the files field is in the form
         if 'files' not in form:
             self.send_error(400, "Bad request - missing files field")
             return
         
-        # Get the file items (could be multiple)
-        file_items = form['files']
-        
         # Handle both single and multiple file uploads
-        if isinstance(file_items, list):
-            # Multiple files
-            file_list = file_items
-        else:
-            # Single file
-            file_list = [file_items]
+        file_list = form['files'] if isinstance(form['files'], list) else [form['files']]
         
         # Process each file
-        uploaded_files = []
         for file_item in file_list:
-            # Check if a file was actually uploaded
             if not file_item.filename:
                 continue
                 
-            # Sanitize the filename
+            # Sanitize the filename and create the file path
             filename = os.path.basename(file_item.filename)
-            
-            # Create the file path
             file_path = os.path.join(path, filename)
             
             try:
-                # Write the file
                 with open(file_path, 'wb') as f:
                     f.write(file_item.file.read())
-                uploaded_files.append(filename)
             except Exception as e:
                 self.send_error(500, f"Server error: {str(e)}")
                 return
         
         # Redirect back to the current directory
+        self._redirect_to_directory()
+    
+    def _redirect_to_directory(self):
+        """Redirect back to the current directory."""
         self.send_response(303)
         self.send_header("Location", self.path.split('?')[0])
         self.end_headers()
     
     def _handle_folder_creation(self, path):
         """Handle folder creation requests."""
-        # Get the content length
         content_length = int(self.headers['Content-Length'])
-        
-        # Read the POST data
         post_data = self.rfile.read(content_length).decode('utf-8')
-        
-        # Parse the form data
         form_data = urllib.parse.parse_qs(post_data)
         
-        # Get the folder name
         folder_name = form_data.get('folder_name', [''])[0]
         
         if not folder_name:
             self.send_error(400, "Bad request - missing folder name")
             return
         
-        # Sanitize the folder name (remove path separators)
+        # Sanitize the folder name and create the folder path
         folder_name = os.path.basename(folder_name)
-        
-        # Create the folder path
         folder_path = os.path.join(path, folder_name)
         
         try:
-            # Create the folder
             os.makedirs(folder_path, exist_ok=True)
-            
-            # Redirect back to the current directory
-            self.send_response(303)
-            self.send_header("Location", self.path.split('?')[0])
-            self.end_headers()
-            
+            self._redirect_to_directory()
         except Exception as e:
             self.send_error(500, f"Server error: {str(e)}")
 
     def _handle_file_deletion(self, path):
         """Handle file/folder deletion requests."""
         try:
-            # Get the content length
             content_length = int(self.headers['Content-Length'])
-            
-            # Read the POST data
             post_data = self.rfile.read(content_length).decode('utf-8')
-            
-            # Parse the form data
             form_data = urllib.parse.parse_qs(post_data)
             
-            # Get the filename
             filename = form_data.get('filename', [''])[0]
             
             if not filename:
-                f = self._show_directory_with_error(path, "Missing filename")
-                if f:
-                    self.copyfile(f, self.wfile)
-                return
+                return self._show_directory_with_error(path, "Missing filename")
             
-            # Remove trailing slash if present (important for directories)
-            filename = filename.rstrip('/')
-            
-            # Sanitize the filename
-            filename = os.path.basename(filename)
-            
-            # Create the full path
+            # Sanitize the filename and create the full path
+            filename = os.path.basename(filename.rstrip('/'))
             file_path = os.path.join(path, filename)
             
-            # Check if path exists
-            if not os.path.exists(file_path):
-                f = self._show_directory_with_error(path, "File not found")
-                if f:
-                    self.copyfile(f, self.wfile)
-                return
-            
-            # Check if path is within data directory
+            # Check if path exists and is within data directory
             data_dir = os.path.join(os.getcwd(), self.data_directory)
+            if not os.path.exists(file_path):
+                return self._show_directory_with_error(path, "File not found")
             if not os.path.realpath(file_path).startswith(data_dir):
-                f = self._show_directory_with_error(path, "Cannot delete files outside data directory")
-                if f:
-                    self.copyfile(f, self.wfile)
-                return
+                return self._show_directory_with_error(path, "Cannot delete files outside data directory")
             
             # Delete the file/folder
             if os.path.isdir(file_path):
-                try:
-                    # First check if directory is actually empty
-                    if not os.listdir(file_path):
-                        os.rmdir(file_path)
-                        # Redirect back to the current directory
-                        self.send_response(303)
-                        self.send_header("Location", self.path.split('?')[0])
-                        self.end_headers()
-                    else:
-                        f = self._show_directory_with_error(path, "Directory not empty - contains files or subdirectories")
-                        if f:
-                            self.copyfile(f, self.wfile)
-                except OSError as e:
-                    f = self._show_directory_with_error(path, f"Failed to delete directory: {str(e)}")
-                    if f:
-                        self.copyfile(f, self.wfile)
+                if not os.listdir(file_path):  # Check if directory is empty
+                    os.rmdir(file_path)
+                    self._redirect_to_directory()
+                else:
+                    return self._show_directory_with_error(path, "Directory not empty - contains files or subdirectories")
             else:
-                try:
-                    os.remove(file_path)
-                    # Redirect back to the current directory
-                    self.send_response(303)
-                    self.send_header("Location", self.path.split('?')[0])
-                    self.end_headers()
-                except OSError as e:
-                    f = self._show_directory_with_error(path, f"Failed to delete file: {str(e)}")
-                    if f:
-                        self.copyfile(f, self.wfile)
-        
+                os.remove(file_path)
+                self._redirect_to_directory()
+                
+        except OSError as e:
+            return self._show_directory_with_error(path, f"Failed to delete: {str(e)}")
         except Exception as e:
-            f = self._show_directory_with_error(path, f"Server error: {str(e)}")
-            if f:
-                self.copyfile(f, self.wfile)
+            return self._show_directory_with_error(path, f"Server error: {str(e)}")
 
     def _show_directory_with_error(self, path, error_message):
         """Show directory listing with an error message."""
-        try:
-            # Get list of directory contents
-            file_list = os.listdir(path)
-        except OSError:
-            self.send_error(404, "No permission to list directory")
+        items, display_path, sort_by, sort_order = self._prepare_directory_items(path)
+        if items is None:
             return None
-        
-        # Get query parameters for sorting
-        query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        sort_by = query_components.get('sort', ['name'])[0]
-        sort_order = query_components.get('order', ['asc'])[0]
-        
-        # Get display path
-        display_path = urllib.parse.unquote(self.path)
-        display_path = display_path.split('?')[0]
-        
-        # Prepare items for the template
-        items = []
-        for name in file_list:
-            fullname = os.path.join(path, name)
-            
-            # Skip hidden files
-            if name.startswith('.'):
-                continue
-                
-            # Get file info
-            is_dir = os.path.isdir(fullname)
-            
-            if is_dir:
-                # Calculate total size for directory
-                size = self._get_dir_size(fullname)
-                last_modified = os.path.getmtime(fullname)
-            else:
-                size, last_modified = get_file_info(fullname)
-                
-            items.append((name, is_dir, size, last_modified))
-        
-        # Apply sorting
-        if sort_by == 'name':
-            items.sort(key=lambda x: x[0].lower(), reverse=(sort_order == 'desc'))
-        elif sort_by == 'type':
-            items.sort(key=lambda x: (not x[1], x[0].lower()), reverse=(sort_order == 'desc'))
-        elif sort_by == 'size':
-            items.sort(key=lambda x: (x[2], x[0].lower()), reverse=(sort_order == 'desc'))
-        elif sort_by == 'modified':
-            items.sort(key=lambda x: (x[3], x[0].lower()), reverse=(sort_order == 'desc'))
         
         # Generate HTML content with error message
         html_content = generate_directory_listing(
@@ -405,7 +296,9 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        return f
+        
+        self.copyfile(f, self.wfile)
+        return None
 
     def do_GET(self):
         """Handle GET requests for files and directories."""
@@ -423,25 +316,18 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
         
         # If it's a file, serve it
         try:
-            # Check if file exists and is readable
             if not os.path.exists(path):
                 self.send_error(404, "File not found")
                 return
             
-            # Determine content type
-            content_type = self.guess_type(path)
-            
-            # Open and read the file
+            # Serve the file
             with open(path, 'rb') as f:
                 content = f.read()
             
-            # Send headers
             self.send_response(200)
-            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Type", self.guess_type(path))
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            
-            # Send file content
             self.wfile.write(content)
             
         except Exception as e:
@@ -450,93 +336,40 @@ class UploadEnabledHTTPHandler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
         """Guess the type of a file based on its extension."""
         ext = os.path.splitext(path)[1].lower()
-        if ext in self.extensions_map:
-            return self.extensions_map[ext]
-        return 'application/octet-stream'
-
-    def serve_static_file(self):
-        """Serve static files from the static directory."""
-        # Get the file path
-        file_path = self.translate_static_path(self.path)
-        
-        try:
-            # Check if file exists
-            if not os.path.exists(file_path) or not os.path.isfile(file_path):
-                self.send_error(404, "File not found")
-                return
-            
-            # Determine content type
-            content_type = self.get_content_type(file_path)
-            
-            # Open the file
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            
-            # Send response
-            self.send_response(200)
-            self.send_header("Content-type", content_type)
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-            
-        except Exception as e:
-            self.send_error(500, f"Server error: {str(e)}")
+        return self.extensions_map.get(ext, self.extensions_map[''])
 
     def translate_static_path(self, path):
         """Translate a static file path to a local file path."""
-        # Remove /static/ prefix
+        # Remove /static/ prefix and get the static directory
         rel_path = path[8:]  # Remove '/static/'
-        
-        # Get the current directory
         cwd = os.getcwd()
-        
-        # Join with the static directory
         static_dir = os.path.join(cwd, 'static')
         
         # Ensure the static directory exists
         if not os.path.exists(static_dir):
             os.makedirs(static_dir, exist_ok=True)
         
-        # Join with the relative path
+        # Join with the relative path and ensure it's within the static directory
         file_path = os.path.normpath(os.path.join(static_dir, rel_path))
-        
-        # Ensure the path is still within the static directory
-        if not file_path.startswith(static_dir):
-            return os.path.join(static_dir, 'index.html')
-        
-        return file_path
+        return file_path if file_path.startswith(static_dir) else os.path.join(static_dir, 'index.html')
 
-    def get_content_type(self, path):
-        """Get the content type based on file extension."""
-        ext = os.path.splitext(path)[1].lower()
-        content_types = {
-            '.html': 'text/html',
-            '.css': 'text/css',
-            '.js': 'application/javascript',
-            '.json': 'application/json',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.gif': 'image/gif',
-            '.svg': 'image/svg+xml',
-            '.ico': 'image/x-icon',
-        }
-        return content_types.get(ext, 'application/octet-stream')
-
-# Add these lines near the class definition
-extensions_map = {
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.txt': 'text/plain',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.xml': 'application/xml',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.pdf': 'application/pdf',
-    '.zip': 'application/zip',
-    '': 'application/octet-stream',    # Default
-} 
+    def serve_static_file(self):
+        """Serve static files from the static directory."""
+        file_path = self.translate_static_path(self.path)
+        
+        try:
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                self.send_error(404, "File not found")
+                return
+            
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            
+            self.send_response(200)
+            self.send_header("Content-type", self.guess_type(file_path))
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            
+        except Exception as e:
+            self.send_error(500, f"Server error: {str(e)}")
